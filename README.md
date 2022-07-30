@@ -1,6 +1,3 @@
-Define both participants
+# This is the vault challenge level 2
 
-Alice participant=> deployer, depositor, owner of the fund
-Bob participant => attacher, owner of the fund if Alice allow
-
-# create both participant
+README will be updated soon
