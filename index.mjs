@@ -1,50 +1,99 @@
-import {loadStdlib} from '@reach-sh/stdlib';
+import {loadStdlib, ask} from '@reach-sh/stdlib';
 import * as backend from './build/index.main.mjs';
 const stdlib = loadStdlib(process.env);
 
+const interact = { ...stdlib.hasRandom };
+interact.informTimeout = () => {
+  console.log(`There was a timeout.`);
+  process.exit(1);
+};
+const isAlice= await ask.ask(
+  "Are you Alice?",
+  ask.yesno
+);
+const who= isAlice? "Alice": "Bob"
 
-const startingBalance = stdlib.parseCurrency(6000);
+console.log("Starting the vault...")
 
-const [ accAlice, accBob ] =
-  await stdlib.newTestAccounts(2, startingBalance);
-console.log('Hello, Alice and Bob!');
+let acc= null
+const createAcc= await ask.ask(
+  "would you like to create account(This is Algo devnet)",
+  ask.yesno
+);
+if(createAcc && isAlice){
+  acc= await stdlib.newTestAccount(stdlib.parseCurrency(6000))
+} else {
+  acc= await stdlib.newTestAccount(stdlib.parseCurrency(10))
 
-console.log('Launching...');
-const ctcAlice = accAlice.contract(backend);
-const ctcBob = accBob.contract(backend, ctcAlice.getInfo());
-const getBalance = async ()=> await stdlib.formatCurrency(await stdlib.balanceOf(accBob))
+} 
 
-const SharedParticipants= ()=>({
-  showTimer:(time)=>{
-    console.log(parseInt(time))
+
+let ctc = null
+if(isAlice){
+  ctc=acc.contract(backend);
+  ctc.getInfo().then((info) => {
+    console.log(`The contract is deployed as = ${JSON.stringify(info)}`); });
+} else {
+  const info = await ask.ask(
+    `Please paste the contract information:`,
+    JSON.parse
+  );
+  ctc = acc.contract(backend, info);
+}
+const fmt = (x) => stdlib.formatCurrency(x, 4);
+const getBalance = async () => fmt(await stdlib.balanceOf(acc));
+const before = await getBalance();
+console.log(`Your balance is ${before}`);
+
+
+  interact.showTimer=(time)=>{
+    console.log("The aggreement will be executed in the nearest future")
+   console.log(parseInt(time),"seconds")
   }
-})
 
-console.log('Starting backends...');
-await Promise.all([
-  backend.Alice(ctcAlice, {
-     ...SharedParticipants(),
-     vaultMoney: stdlib.parseCurrency(5000),
-     boolReturn: ()=>{
-       return true;
-     },
-    
-    // implement Alice's interact object here
-  }),
- 
 
+if (isAlice) {
+  const amt = await ask.ask(
+    `How much do you want to keep in the vault?`,
+    stdlib.parseCurrency
+  );
+  interact.vaultMoney= ()=>{
+    return amt
+  }
+  interact.deadline = parseInt(10)
   
-  backend.Bob(ctcBob, {
-    ...SharedParticipants(),
-    acceptVault: (amt)=>{
-      console.log(`accepted ${stdlib.formatCurrency(amt)}`)
-    },
-  
- 
-    // implement Bob's interact object here
-  }),
-]);
-const after= await getBalance()
-console.log(`this is ${after}`)
+} else {
+  interact.acceptVault = async (amt) => {
+    const accepted = await ask.ask(
+      `Do you accept the terms with the vault money: ${fmt(amt)}?`,
+      ask.yesno
+    );
+    if (accepted) {
+      return true;
+    } else {
+      process.exit(0)
+    }
+  };
+}
+if(isAlice){
+  const choice = await ask.ask(
+    "Alice, are you still here?",
+    ask.yesno
+  )
+  if(choice){
+  interact.chooseChoice=()=>{
+   return(choice )
+  }
+  } else{
+    interact.chooseChoice=()=>{
+      return(choice )
+     }
+  }
+}
+const part = isAlice ? ctc.p.Alice : ctc.p.Bob;
+await part(interact);
 
-console.log('Goodbye, Alice and Bob!');
+const after = await getBalance();
+console.log(`Your balance is now ${after}`);
+
+ask.done();
